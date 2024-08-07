@@ -2,7 +2,7 @@
 A helper class for configuring REINVENT runs in a less manual way
 """
 
-import enum, json, os
+import enum, json, os, datetime, uuid
 from .shim import *
 from .Parameters import *
 
@@ -31,11 +31,13 @@ class LoggingData:
     )
     def __init__(self,
                  *,
-                 logging_frequency,
-                 logging_path,
-                 result_folder,
-                 job_name,
-                 job_id,
+                 logging_frequency=10,
+                 base_dir=None,
+                 output_dir=None,
+                 results_folder='results',
+                 log_file='progress.log',
+                 job_name=None,
+                 job_id=None,
                  sender="http://0.0.0.1",
                  recipient="local"
                  ):
@@ -46,10 +48,19 @@ class LoggingData:
         # "result_folder": os.path.join(output_dir, "results"),     # will hold the compounds (SMILES) and summaries
         # "job_name": "Reinforcement learning demo",                # set an arbitrary job name for identification
         # "job_id": "demo"                     # only relevant if "recipient" is set to a specific REST endpoint"
+
+        if job_id is None:
+            job_name = 'rnv-{}'.format(str(uuid.uuid4()).replace('-','')[:6])
+        if job_name is None:
+            job_name = '{}_{}'.format(job_id, datetime.datetime.now().isoformat())
+        if base_dir is None:
+            base_dir = os.getcwd()
+        if output_dir is None:
+            output_dir = os.path.join(base_dir, job_name)
         self.opts = dict(
             logging_frequency=logging_frequency,
-            logging_path=logging_path,
-            result_folder=result_folder,
+            logging_path=os.path.join(output_dir, log_file),
+            result_folder=os.path.join(output_dir, results_folder),
             job_name=job_name,
             job_id=job_id,
             sender=sender,
@@ -66,7 +77,6 @@ class Configuration:
         self.run_type = run_type
         self.version = version
         self.log_data = LoggingData(**self.filter_options(opts, LoggingData))
-
 
     @classmethod
     def filter_options(cls, opts, obj):
@@ -86,7 +96,10 @@ class Configuration:
 #         if user_id
 
 class Runner:
-    def __init__(self, configuration):
+    def __init__(self,
+                 configuration,
+                 results_dir=None
+                 ):
         if isinstance(configuration, str):
             configuration = self.load_config(configuration)
         if isinstance(configuration, dict):
@@ -115,6 +128,9 @@ class Runner:
         base_config = self.load_config(os.path.join(
             REINVENT_ROOT, default_config
         ))
+
+        base_dir = os.path.dirname(self.config.log_data.opts['result_folder'])
+        os.makedirs(base_dir, exist_ok=True)
 
         manager = Manager(base_config, self.config.as_dict())
         manager.run()
